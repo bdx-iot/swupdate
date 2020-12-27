@@ -719,11 +719,27 @@ channel_op_res_t channel_set_options(channel_t *this, channel_data_t *channel_da
 	}
 
 	if (channel_data->auth) {
-		if (curl_easy_setopt(channel_curl->handle, CURLOPT_USERPWD,
-				     channel_data->auth) != CURLE_OK) {
-			ERROR("Basic Auth credentials could not be set.");
-			result = CHANNEL_EINIT;
-			goto cleanup;
+		char *username = NULL;
+		char *passwd = NULL;
+		char *credentials = strdup(channel_data->auth);
+
+		username = strtok(credentials, ":");
+		if (username) {
+			if (curl_easy_setopt(channel_curl->handle, CURLOPT_USERNAME,
+				     username) != CURLE_OK) {
+				ERROR("Basic Auth credentials (username) could not be set.");
+				result = CHANNEL_EINIT;
+				goto cleanup;
+			}
+		}
+		passwd = strtok(NULL, "\n");
+		if (passwd) {
+			if (curl_easy_setopt(channel_curl->handle, CURLOPT_PASSWORD,
+				     passwd) != CURLE_OK) {
+				ERROR("Basic Auth credentials (password) could not be set.");
+				result = CHANNEL_EINIT;
+				goto cleanup;
+			}
 		}
 	}
 
