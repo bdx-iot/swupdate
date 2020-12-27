@@ -31,6 +31,8 @@ static struct option long_options[] = {
     {"retries", required_argument, NULL, 'r'},
     {"timeout", required_argument, NULL, 't'},
     {"authentication", required_argument, NULL, 'a'},
+    {"ssh-public-key", required_argument, NULL, 'p'},
+    {"ssh-private-key", required_argument, NULL, 'k'},
     {NULL, 0, NULL, 0}};
 
 /*
@@ -77,6 +79,20 @@ static int download_settings(void *elem, void  __attribute__ ((__unused__)) *dat
 		opt->auth = NULL;
 	}
 
+	GET_FIELD_STRING_RESET(LIBCFG_PARSER, elem, "ssh-public-key", tmp);
+	if (strlen(tmp)) {
+		SETSTRING(opt->ssh_public_key, tmp);
+	} else {
+		opt->ssh_public_key = NULL;
+	}
+
+	GET_FIELD_STRING_RESET(LIBCFG_PARSER, elem, "ssh-private-key", tmp);
+	if (strlen(tmp)) {
+		SETSTRING(opt->ssh_private_key, tmp);
+	} else {
+		opt->ssh_private_key = NULL;
+	}
+
 	get_field(LIBCFG_PARSER, elem, "retries",
 		&opt->retries);
 	get_field(LIBCFG_PARSER, elem, "timeout",
@@ -94,7 +110,9 @@ void download_print_help(void)
 	    "\t  -r, --retries          number of retries (resumed download) if connection\n"
 	    "\t                         is broken (0 means indefinitely retries) (default: %d)\n"
 	    "\t  -t, --timeout          timeout to check if a connection is lost (default: %d)\n"
-	    "\t  -a, --authentication   authentication information as username:password\n",
+	    "\t  -a, --authentication   authentication information as username:password\n"
+	    "\t  -p, --ssh-public-key   file name of ssh public key\n"
+	    "\t  -k, --ssh-private-key  file name of ssh private key\n",
 	    DL_DEFAULT_RETRIES, DL_LOWSPEED_TIME);
 }
 
@@ -114,7 +132,7 @@ int start_download(const char *fname, int argc, char *argv[])
 	/* reset to optind=1 to parse download's argument vector */
 	optind = 1;
 	int choice = 0;
-	while ((choice = getopt_long(argc, argv, "t:u:r:a:",
+	while ((choice = getopt_long(argc, argv, "t:u:r:a:p:k:",
 				     long_options, NULL)) != -1) {
 		switch (choice) {
 		case 't':
@@ -125,6 +143,12 @@ int start_download(const char *fname, int argc, char *argv[])
 			break;
 		case 'a':
 			SETSTRING(channel_options.auth, optarg);
+			break;
+		case 'p':
+			SETSTRING(channel_options.ssh_public_key, optarg);
+			break;
+		case 'k':
+			SETSTRING(channel_options.ssh_private_key, optarg);
 			break;
 		case 'r':
 			channel_options.retries = strtoul(optarg, NULL, 10);
@@ -150,6 +174,12 @@ int start_download(const char *fname, int argc, char *argv[])
 	}
 	if (channel_options.auth != NULL) {
 		free(channel_options.auth);
+	}
+	if (channel_options.ssh_public_key != NULL) {
+		free(channel_options.ssh_public_key);
+	}
+	if (channel_options.ssh_private_key != NULL) {
+		free(channel_options.ssh_private_key);
 	}
 
 	exit(result == SUCCESS ? EXIT_SUCCESS : result);

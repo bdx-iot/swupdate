@@ -727,6 +727,30 @@ channel_op_res_t channel_set_options(channel_t *this, channel_data_t *channel_da
 		}
 	}
 
+	if (channel_data->ssh_public_key) {
+
+		if (curl_easy_setopt(channel_curl->handle, CURLOPT_SSH_AUTH_TYPES,
+					CURLSSH_AUTH_PUBLICKEY) != CURLE_OK) {
+			ERROR("SSH AUTH TYPES key could not be set.");
+			result = CHANNEL_EINIT;
+			goto cleanup;
+		}
+		if (curl_easy_setopt(channel_curl->handle, CURLOPT_SSH_PUBLIC_KEYFILE,
+				     channel_data->ssh_public_key) != CURLE_OK) {
+			ERROR("SSH Public key could not be set.");
+			result = CHANNEL_EINIT;
+			goto cleanup;
+		}
+	}
+
+	if (channel_data->ssh_private_key) {
+		if (curl_easy_setopt(channel_curl->handle, CURLOPT_SSH_PRIVATE_KEYFILE,
+				     channel_data->ssh_private_key) != CURLE_OK) {
+			ERROR("SSH Private key could not be set.");
+			result = CHANNEL_EINIT;
+			goto cleanup;
+		}
+	}
 cleanup:
 	return result;
 }
