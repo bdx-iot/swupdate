@@ -40,6 +40,8 @@ typedef struct {
 	char *url;
 	char *cached_file;
 	char *auth;
+	char *ssh_public_key;
+	char *ssh_private_key;
 	char *request_body;
 	char *iface;
 #ifdef CONFIG_JSON
