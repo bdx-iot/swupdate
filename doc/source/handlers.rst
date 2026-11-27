@@ -1006,6 +1006,21 @@ Example:
         }
     );
 
+Testing without hardware
+........................
+
+``examples/mcumgr/mcumgr_emulator.py`` emulates a Zephyr / MCUboot
+microcontroller on a pseudo terminal. It can simulate an image that does not
+confirm itself, an image rejected by MCUboot, a slow reset, lost or corrupted
+frames, and a USB-serial bridge holding the last byte of each write (see
+``--help``):
+
+::
+
+        ./examples/mcumgr/mcumgr_emulator.py --link /tmp/ttyMCU --mode bad &
+        # sw-description: device = "/tmp/ttyMCU";
+        swupdate -v -i update.swu
+
 SSBL Handler
 ------------
 
