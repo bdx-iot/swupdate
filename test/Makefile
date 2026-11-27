@@ -42,6 +42,7 @@ tests-y += test_network_thread
 tests-y += test_progress_thread
 tests-y += test_network_ipc_if
 tests-$(CONFIG_CFI) += test_flash_handler
+tests-$(CONFIG_MCUMGRHANDLER) += test_mcumgr_smp
 
 test_network_ipc_if-extra-objs := $(objtree)/ipc/network_ipc-if.o
 
