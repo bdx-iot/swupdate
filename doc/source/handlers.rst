@@ -854,6 +854,158 @@ Example:
         }
     );
 
+mcumgr handler
+--------------
+
+This handler updates a microcontroller running `Zephyr <https://zephyrproject.org>`_
+and the `MCUboot <https://docs.mcuboot.com>`_ bootloader. The microcontroller is
+connected to the main controller via UART. The handler uses the MCUmgr SMP
+protocol (Simple Management Protocol) of Zephyr, so the microcontroller does not
+need a custom update protocol: the standard Zephyr image management and
+OS management groups are used.
+
+The image is the signed MCUboot image built by Zephyr (``zephyr.signed.bin``).
+The update runs as follows:
+
+1. The image is streamed to the secondary slot of MCUboot (image upload).
+   It is never stored completely on the main controller.
+2. The new image is marked for test (image state, ``confirm = false``).
+3. The microcontroller is reset: MCUboot checks the signature of the new image
+   and swaps the slots.
+4. The handler waits until the new image runs from the primary slot. Until
+   the microcontroller resets (Zephyr waits ``CONFIG_MCUMGR_GRP_OS_RESET_MS``),
+   the previous image may still answer: it is recognized because the new
+   image is still pending, and the handler keeps waiting.
+5. The image is confirmed, either by the application on the microcontroller
+   after its own checks (``confirm = "mcu"``, default) or by the handler
+   (``confirm = "host"``).
+
+The image is always uploaded, even if it is already running: its hash is the one
+computed by MCUboot, the handler knows it only after the upload. In this case,
+the handler stops after the upload and does not reset the microcontroller.
+
+Each SMP request is sent again if no valid answer arrives in time (lost or
+corrupted frame), up to ``retries`` times. An upload chunk sent twice is not
+written twice: the microcontroller answers with the next expected offset.
+
+Some USB-serial bridges (seen with OpenSDA / DAPLink) hold the last bytes of a
+write until more data is sent: the answer to each request would arrive one
+request late. The handler writes an empty line after each request to push it
+through (the SMP transport of Zephyr ignores empty lines), and discards the data
+received when the UART is opened.
+
+Error handling and MCUboot modes
+................................
+
+If MCUboot rejects the image, or if the new image runs but is not confirmed in
+time, the handler resets the microcontroller again and returns an error: the new
+image was not confirmed, so MCUboot reverts to the previous image.
+
+This rollback requires a swap mode of MCUboot (``swap-using-move``,
+``swap-using-offset``, ``swap-using-scratch``). With ``overwrite-only``, the
+previous image is overwritten and cannot be restored: the reset done on error does
+not revert the update. The direct-xip and RAM load modes are not supported:
+the handler expects the running image in the primary slot.
+
+If the update fails after the image was marked for test, but before it runs
+(for example the microcontroller is not reset in ``boot-timeout-ms``), the
+handler tries to cancel it by erasing the secondary slot. Zephyr refuses this
+unless it is built with ``CONFIG_MCUMGR_GRP_IMG_ALLOW_ERASE_PENDING``: otherwise
+an error is logged, and the image is tested at the next reset of the
+microcontroller.
+
+Microcontroller setup
+.....................
+
+The microcontroller must use the MCUmgr UART transport. The UART must carry only
+SMP frames: lines that are not SMP frames (for example the MCUboot boot log) are
+ignored. A minimal Zephyr configuration is:
+
+::
+
+        CONFIG_BOOTLOADER_MCUBOOT=y
+        CONFIG_MCUMGR=y
+        CONFIG_NET_BUF=y
+        CONFIG_ZCBOR=y
+        CONFIG_CRC=y
+        CONFIG_BASE64=y
+        CONFIG_FLASH=y
+        CONFIG_FLASH_MAP=y
+        CONFIG_STREAM_FLASH=y
+        CONFIG_IMG_MANAGER=y
+        CONFIG_MCUMGR_GRP_IMG=y
+        CONFIG_MCUMGR_GRP_OS=y
+        CONFIG_CONSOLE=y
+        CONFIG_UART_CONSOLE=n
+        CONFIG_UART_MCUMGR=y
+        CONFIG_MCUMGR_TRANSPORT_UART=y
+
+and, in the devicetree, ``zephyr,uart-mcumgr`` must point to the UART connected
+to the main controller. With ``confirm = "mcu"``, the application calls
+``boot_write_img_confirmed()`` when it considers itself healthy.
+
+Properties
+..........
+
+The UART is set in the ``device`` attribute. The handler accepts the following
+properties. An invalid value makes the update fail.
+
+.. table:: Properties for mcumgr handler
+
+   +--------------------+-------------+-------------------------------------------------+
+   | Name               | Default     | Description                                     |
+   +====================+=============+=================================================+
+   | baudrate           | 115200      | UART baudrate                                   |
+   +--------------------+-------------+-------------------------------------------------+
+   | chunk-size         | 128         | Bytes of image sent per upload request (16 to   |
+   |                    |             | 4096). It must fit                              |
+   |                    |             | ``CONFIG_MCUMGR_TRANSPORT_UART_MTU`` of the     |
+   |                    |             | microcontroller (default 256).                  |
+   +--------------------+-------------+-------------------------------------------------+
+   | image              | 0           | MCUboot image number (multi image setups)       |
+   +--------------------+-------------+-------------------------------------------------+
+   | confirm            | mcu         | "mcu": wait for the application to confirm the  |
+   |                    |             | image. "host": the handler confirms the image   |
+   |                    |             | as soon as it runs.                             |
+   +--------------------+-------------+-------------------------------------------------+
+   | retries            | 3           | Number of times a request is sent again when    |
+   |                    |             | no valid answer arrives in time (0 to 100)      |
+   +--------------------+-------------+-------------------------------------------------+
+   | timeout-ms         | 5000        | Timeout for each SMP request                    |
+   +--------------------+-------------+-------------------------------------------------+
+   | erase-timeout-ms   | 30000       | Timeout for the first upload request, during    |
+   |                    |             | which the secondary slot is erased              |
+   +--------------------+-------------+-------------------------------------------------+
+   | boot-timeout-ms    | 120000      | Time allowed for the reset, the swap done by    |
+   |                    |             | MCUboot and the boot of the new image           |
+   +--------------------+-------------+-------------------------------------------------+
+   | confirm-timeout-ms | 30000       | Time allowed to the application to confirm the  |
+   |                    |             | image (``confirm = "mcu"``)                     |
+   +--------------------+-------------+-------------------------------------------------+
+
+If the image is compressed or encrypted in the SWU, the ``decompressed-size`` or
+``decrypted-size`` property is required: SMP needs the size of the image before the
+upload starts.
+
+Example:
+
+::
+
+    images: (
+        {
+            filename = "zephyr.signed.bin";
+            type = "mcumgr";
+            device = "/dev/ttymxc2";
+            sha256 = "$swupdate_get_sha256(zephyr.signed.bin)";
+
+            properties: {
+                baudrate = "115200";
+                confirm = "mcu";
+                boot-timeout-ms = "60000";
+            };
+        }
+    );
+
 SSBL Handler
 ------------
 

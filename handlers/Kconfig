@@ -308,6 +308,16 @@ config UCFWHANDLER
 comment "Microcontroller handler depends on libgpiod"
 	depends on !HAVE_LIBGPIOD
 
+config MCUMGRHANDLER
+	bool "mcumgr (Zephyr / MCUboot microcontroller over UART)"
+	default n
+	help
+	  Update an external microcontroller running Zephyr and the
+	  MCUboot bootloader with the MCUmgr SMP protocol over a UART.
+	  The image is uploaded to the secondary slot and tested by
+	  MCUboot after a reset; if it is not confirmed, MCUboot
+	  reverts to the previous image.
+
 config UNIQUEUUID
 	bool "uniqueuuid"
 	depends on HAVE_LIBBLKID
